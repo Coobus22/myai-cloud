@@ -1,12 +1,12 @@
 import os
+import time
 import requests
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# Na start pozwól wszystkim (żeby nie walczyć z blokadami).
-# Potem można zawęzić.
+# Pozwalamy na połączenia z rozszerzenia (na start bez restrykcji)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,55 +14,83 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# To jest "hasło" między rozszerzeniem a Twoim serwerem
+# Token między rozszerzeniem a serwerem
 EXTENSION_TOKEN = os.getenv("EXTENSION_TOKEN", "kuba-123")
 
-# Klucz OpenAI trzymamy TYLKO na serwerze (nigdy w rozszerzeniu)
+# Klucz OpenAI – TYLKO na serwerze
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
-# Możesz zostawić gpt-5 / gpt-4o – zależy co masz dostępne na koncie
+# Model (zmień w Render → Environment jeśli chcesz)
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
+
 
 @app.get("/health")
 def health():
     return {"ok": True}
 
+
 @app.post("/chat")
 async def chat(request: Request):
-    # 1) Sprawdź token od rozszerzenia
+    start_time = time.time()
+
+    # --- AUTH ---
     auth = request.headers.get("authorization", "")
     if auth != f"Bearer {EXTENSION_TOKEN}":
+        print("CHAT: invalid token", flush=True)
         return {"error": "Zły token (brak dostępu)."}
 
-    # 2) Weź tekst
+    # --- INPUT ---
     body = await request.json()
     text = str(body.get("input", "")).strip()
+
     if not text:
         return {"error": "Brak tekstu."}
 
+    print(f"CHAT: received text, len={len(text)}", flush=True)
+
+    # --- SZYBKI TEST (diagnostyka) ---
+    if text.lower().startswith("ping"):
+        return {"output": "pong (serwer działa)"}
+
     if not OPENAI_API_KEY:
-        return {"error": "Brak ustawionego OPENAI_API_KEY na serwerze."}
+        print("CHAT: missing OPENAI_API_KEY", flush=True)
+        return {"error": "Brak OPENAI_API_KEY na serwerze."}
 
-    # 3) Zapytaj model w chmurze (Chat Completions)
-    # Endpoint i format są opisane w dokumentacji Chat Completions. :contentReference[oaicite:6]{index=6}
-    resp = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
-        },
-        json={
-            "model": MODEL,
-            "messages": [{"role": "user", "content": text}]
-        },
-        timeout=120,
-    )
+    # --- OPENAI ---
+    payload = {
+        "model": MODEL,
+        "messages": [
+            {"role": "user", "content": text}
+        ]
+    }
 
-    data = resp.json()
+    print("CHAT: calling OpenAI...", flush=True)
 
-    # Jeśli coś poszło źle, pokaż błąd wprost
+    try:
+        resp = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+            },
+            json=payload,
+            timeout=(10, 30)  # 10s połączenie, 30s odpowiedź
+        )
+    except Exception as e:
+        print("CHAT: OpenAI connection error:", str(e), flush=True)
+        return {"error": f"OpenAI connection error: {str(e)}"}
+
+    elapsed = round(time.time() - start_time, 2)
+    print(f"CHAT: OpenAI response {resp.status_code} in {elapsed}s", flush=True)
+
+    try:
+        data = resp.json()
+    except Exception:
+        return {"error": "OpenAI zwróciło niepoprawną odpowiedź."}
+
     if resp.status_code != 200:
         return {"error": data}
 
     output = data["choices"][0]["message"]["content"]
     return {"output": output}
+
