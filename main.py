@@ -67,7 +67,7 @@ async def chat(request: Request):
         "messages": [
             {
                 "role": "system",
-                "content": "Dostaniesz pytanie i możliwe odpowiedzi. Niektóre pytania będą miały jedną poprawną odpowiedź, niektóre wiele poprawnych. W odpowiedzi podaj poprawne odpowiedzi i jednym zdaniem opisz dlaczego je wybrałeś."
+                "content": "Podaj poprawne odpowiedzi. Odpowiedzi powinny być w maksymalnie 3 zdaniach."
             },
             {
                 "role": "user",
