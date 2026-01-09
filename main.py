@@ -79,7 +79,7 @@ async def chat(request: Request):
                 "Authorization": f"Bearer {OPENAI_API_KEY}",
             },
             json=payload,
-            timeout=(10, 30)  # 10s połączenie, 30s odpowiedź
+            timeout=(10, 120)  # 10s połączenie, 30s odpowiedź
         )
     except Exception as e:
         print("CHAT: OpenAI connection error:", str(e), flush=True)
