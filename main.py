@@ -20,8 +20,13 @@ EXTENSION_TOKEN = os.getenv("EXTENSION_TOKEN", "kuba-123")
 # Klucz OpenAI – TYLKO na serwerze
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
-# Model (zmień w Render → Environment jeśli chcesz)
+# Model (możesz zmienić w Render → Environment)
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
+
+
+@app.get("/")
+def root():
+    return {"status": "ok"}
 
 
 @app.get("/health")
@@ -33,13 +38,13 @@ def health():
 async def chat(request: Request):
     start_time = time.time()
 
-    # --- AUTH ---
+    # --- AUTORYZACJA ---
     auth = request.headers.get("authorization", "")
     if auth != f"Bearer {EXTENSION_TOKEN}":
         print("CHAT: invalid token", flush=True)
         return {"error": "Zły token (brak dostępu)."}
 
-    # --- INPUT ---
+    # --- DANE WEJŚCIOWE ---
     body = await request.json()
     text = str(body.get("input", "")).strip()
 
@@ -48,7 +53,7 @@ async def chat(request: Request):
 
     print(f"CHAT: received text, len={len(text)}", flush=True)
 
-    # --- SZYBKI TEST (diagnostyka) ---
+    # --- SZYBKI TEST (DIAGNOSTYKA) ---
     if text.lower().startswith("ping"):
         return {"output": "pong (serwer działa)"}
 
@@ -56,7 +61,7 @@ async def chat(request: Request):
         print("CHAT: missing OPENAI_API_KEY", flush=True)
         return {"error": "Brak OPENAI_API_KEY na serwerze."}
 
-    # --- OPENAI ---
+    # --- WYWOŁANIE OPENAI ---
     payload = {
         "model": MODEL,
         "messages": [
@@ -70,7 +75,7 @@ async def chat(request: Request):
         resp = requests.post(
             "https://api.openai.com/v1/chat/completions",
             headers={
-                "Content-Type": "application/json",
+                "Content-Type": "application/json; charset=utf-8",
                 "Authorization": f"Bearer {OPENAI_API_KEY}",
             },
             json=payload,
@@ -79,6 +84,9 @@ async def chat(request: Request):
     except Exception as e:
         print("CHAT: OpenAI connection error:", str(e), flush=True)
         return {"error": f"OpenAI connection error: {str(e)}"}
+
+    # 🔧 KLUCZOWA LINIA – NAPRAWA POLSKICH ZNAKÓW
+    resp.encoding = "utf-8"
 
     elapsed = round(time.time() - start_time, 2)
     print(f"CHAT: OpenAI response {resp.status_code} in {elapsed}s", flush=True)
@@ -93,4 +101,3 @@ async def chat(request: Request):
 
     output = data["choices"][0]["message"]["content"]
     return {"output": output}
-
