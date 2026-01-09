@@ -53,8 +53,7 @@ async def chat(request: Request):
         },
         json={
             "model": MODEL,
-            "messages": [{"role": "user", "content": text}],
-            "temperature": 0.2,
+            "messages": [{"role": "user", "content": text}]
         },
         timeout=120,
     )
