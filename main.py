@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# Pozwalamy na połączenia z rozszerzenia (na start bez restrykcji)
+# Pozwalamy na połączenia z rozszerzenia
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,11 +17,11 @@ app.add_middleware(
 # Token między rozszerzeniem a serwerem
 EXTENSION_TOKEN = os.getenv("EXTENSION_TOKEN", "kuba-123")
 
-# Klucz OpenAI – TYLKO na serwerze
+# Klucz OpenAI – tylko na serwerze
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
-# Model (możesz zmienić w Render → Environment)
-MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
+# Model (ustawiany w Render → Environment)
+MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 
 @app.get("/")
@@ -44,7 +44,7 @@ async def chat(request: Request):
         print("CHAT: invalid token", flush=True)
         return {"error": "Zły token (brak dostępu)."}
 
-    # --- DANE WEJŚCIOWE ---
+    # --- WEJŚCIE ---
     body = await request.json()
     text = str(body.get("input", "")).strip()
 
@@ -53,19 +53,26 @@ async def chat(request: Request):
 
     print(f"CHAT: received text, len={len(text)}", flush=True)
 
-    # --- SZYBKI TEST (DIAGNOSTYKA) ---
+    # --- TEST (diagnostyka) ---
     if text.lower().startswith("ping"):
-        return {"output": "pong (serwer działa)"}
+        return {"output": "pong"}
 
     if not OPENAI_API_KEY:
         print("CHAT: missing OPENAI_API_KEY", flush=True)
         return {"error": "Brak OPENAI_API_KEY na serwerze."}
 
-    # --- WYWOŁANIE OPENAI ---
+    # --- ZAPYTANIE DO OPENAI ---
     payload = {
         "model": MODEL,
         "messages": [
-            {"role": "user", "content": text}
+            {
+                "role": "system",
+                "content": "Odpowiadaj jednym krótkim zdaniem."
+            },
+            {
+                "role": "user",
+                "content": text
+            }
         ]
     }
 
@@ -79,13 +86,13 @@ async def chat(request: Request):
                 "Authorization": f"Bearer {OPENAI_API_KEY}",
             },
             json=payload,
-            timeout=(10, 120)  # 10s połączenie, 30s odpowiedź
+            timeout=(10, 120)  # 10s połączenie, 120s odpowiedź
         )
     except Exception as e:
         print("CHAT: OpenAI connection error:", str(e), flush=True)
         return {"error": f"OpenAI connection error: {str(e)}"}
 
-    # 🔧 KLUCZOWA LINIA – NAPRAWA POLSKICH ZNAKÓW
+    # 🔧 Naprawa polskich znaków
     resp.encoding = "utf-8"
 
     elapsed = round(time.time() - start_time, 2)
